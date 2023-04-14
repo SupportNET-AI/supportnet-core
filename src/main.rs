@@ -13,11 +13,11 @@ use serenity::{
 };
 
 
-const SECONDS_IN_MINUTE: i32 = 60;
-const SECONDS_IN_HOUR: i32 = 3600;
-const SECONDS_IN_DAY: i32 = 86400;
-const SECONDS_IN_WEEK: i32 = 604800;
-const CHECK_IN_TIMEOUT: i32 = 150 * SECONDS_IN_MINUTE;
+const SECONDS_IN_MINUTE: i64 = 60;
+const SECONDS_IN_HOUR: i64 = 3600;
+const SECONDS_IN_DAY: i64 = 86400;
+const SECONDS_IN_WEEK: i64 = 604800;
+const CHECK_IN_TIMEOUT: i64 = 150 * SECONDS_IN_MINUTE;
 
 struct Handler;
 
@@ -102,14 +102,41 @@ impl SupportNET {
             user_sobriety_date,
         })
     }
+
+
+    fn start_conversation(&self) {
+        let mut conversation_state = self.conversation_state.lock().unwrap();
+        conversation_state.in_conversation = true;
+        conversation_state.timeout_counter = 0;
+        println!("Conversation started.");
+    }
+
+
+    async fn end_conversation(&self) {
+        let new_check_in_timer = self.request_new_check_in_timeout().await;
+
+        let mut conversation_state = self.conversation_state.lock().unwrap();
+
+        conversation_state.in_conversation = false;
+        conversation_state.timeout_counter = 0;
+        conversation_state.message_history.clear();
+        conversation_state.check_in_timer = new_check_in_timer;
+
+        println!("Conversation ended.");
+    }
+
+    async fn request_new_check_in_timeout(&self) -> i64 {
+        // TODO: Replace this with the actual logic for calculating the new check-in timer
+        CHECK_IN_TIMEOUT
+    }
 }
 
 
 struct ConversationState {
     in_conversation: bool,
     message_history: Vec<Message>,
-    check_in_timer: i32,
-    timeout_counter: i32,
+    check_in_timer: i64,
+    timeout_counter: i64,
 }
 
 
