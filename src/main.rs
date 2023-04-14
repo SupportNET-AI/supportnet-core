@@ -60,6 +60,37 @@ impl EventHandler for Handler {
 }
 
 
+pub struct SupportNetConfig {
+    pub user_name: String,
+    pub user_is_sober: bool,
+    pub user_timezone: chrono_tz::Tz,
+    pub user_sobriety_date: DateTime<chrono_tz::Tz>,
+}
+
+
+pub fn config_from_env() -> SupportNetConfig {
+    let user_name = env::var("USER_NAME").expect("Expected USER_NAME in the environment");
+
+    let user_is_sober_str = env::var("USER_IS_SOBER").expect("Expected USER_IS_SOBER in the environment");
+    let user_is_sober = user_is_sober_str.parse::<bool>().expect("Invalid user is sober value");
+
+    let user_timezone_str = env::var("USER_TIMEZONE").expect("Expected USER_TIMEZONE in the environment");
+    let user_timezone = user_timezone_str.parse::<chrono_tz::Tz>().expect("Invalid timezone");
+
+    let user_sobriety_date_str = env::var("USER_SOBRIETY_DATE").expect("Expected USER_SOBRIETY_DATE in the environment");
+    let user_sobriety_date = DateTime::parse_from_rfc3339(&user_sobriety_date_str)
+        .expect("Invalid sobriety date")
+        .with_timezone(&user_timezone);
+
+    SupportNetConfig {
+        user_name,
+        user_is_sober,
+        user_timezone,
+        user_sobriety_date,
+    }
+}
+
+
 struct SupportNET {
     pub discord_client: Option<Client>,
     conversation_state: Mutex<ConversationState>,
@@ -71,21 +102,7 @@ struct SupportNET {
 
 
 impl SupportNET {
-    pub async fn new(token: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let user_name = env::var("USER_NAME").expect("Expected USER_NAME in the environment");
-        
-        let user_is_sober_str = env::var("USER_IS_SOBER").expect("Expected USER_IS_SOBER in the environment");
-        let user_is_sober = user_is_sober_str.parse::<bool>().expect("Invalid user is sober value");
-
-        let user_timezone_str = env::var("USER_TIMEZONE").expect("Expected USER_TIMEZONE in the environment");
-        let user_timezone = user_timezone_str.parse::<chrono_tz::Tz>().expect("Invalid timezone");
-        
-        let user_sobriety_date_str = env::var("USER_SOBRIETY_DATE").expect("Expected USER_SOBRIETY_DATE in the environment");
-        let user_sobriety_date = DateTime::parse_from_rfc3339(&user_sobriety_date_str)
-            .expect("Invalid sobriety date")
-            .with_timezone(&user_timezone);
-
-        
+    pub async fn new(config: SupportNetConfig, token: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let intents = GatewayIntents::DIRECT_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
         let discord_client = Client::builder(token, intents)
             .event_handler(Handler)
@@ -99,12 +116,12 @@ impl SupportNET {
         });
 
         Ok(Self {
-            discord_client: Some(discord_client),
+            user_name: config.user_name,
+            user_is_sober: config.user_is_sober,
+            user_timezone: config.user_timezone,
+            user_sobriety_date: config.user_sobriety_date,
             conversation_state,
-            user_is_sober,
-            user_name,
-            user_timezone,
-            user_sobriety_date,
+            discord_client: Some(discord_client),
         })
     }
 
@@ -181,9 +198,21 @@ impl SupportNET {
 
 struct ConversationState {
     in_conversation: bool,
-    message_history: Vec<Message>,
+    message_history: Vec<AIMessage>,
     check_in_timer: i64,
     timeout_counter: i64,
+}
+
+
+impl Default for ConversationState {
+    fn default() -> Self {
+        Self {
+            in_conversation: false,
+            timeout_counter: 0,
+            message_history: vec![],
+            check_in_timer: CHECK_IN_TIMEOUT,
+        }
+    }
 }
 
 
@@ -197,9 +226,9 @@ struct AIMessage {
 async fn main() {
     dotenv().expect(".env file not found");
 
-    let token = env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN not found in environment");
-
-    let mut support_net = SupportNET::new(&token).await.expect("Error creating SupportNET");
+    let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in the environment");
+    let config = config_from_env();
+    let mut support_net = SupportNET::new(config, &token).await.expect("Failed to initialize SupportNET");
 
     if let Err(why) = support_net.discord_client.as_mut().unwrap().start().await {
         println!("An error occurred while running the client: {:?}", why);

@@ -30,3 +30,6 @@ features = [
     "utils",
     "rustls_backend",
 ]
+
+[dev-dependencies]
+tokio-test = "0.4.2"
