@@ -19,8 +19,6 @@ const SECONDS_IN_DAY: i32 = 86400;
 const SECONDS_IN_WEEK: i32 = 604800;
 const CHECK_IN_TIMEOUT: i32 = 150 * SECONDS_IN_MINUTE;
 
-
-
 struct Handler;
 
 #[async_trait]
@@ -57,18 +55,32 @@ impl EventHandler for Handler {
 }
 
 
-
 struct SupportNET {
     discord_client: Client,
     conversation_state: Mutex<ConversationState>,
+    user_is_sober: bool,
+    user_name: String,
     user_timezone: chrono_tz::Tz,
-    begin_quiet_hours: u32,
-    end_quiet_hours: u32,
+    user_sobriety_date: chrono::DateTime<chrono_tz::Tz>,
 }
 
 
 impl SupportNET {
     pub async fn new(token: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let user_name = env::var("USER_NAME").expect("Expected USER_NAME in the environment");
+        
+        let user_is_sober_str = env::var("USER_IS_SOBER").expect("Expected USER_IS_SOBER in the environment");
+        let user_is_sober = user_is_sober_str.parse::<bool>().expect("Invalid user is sober value");
+
+        let user_timezone_str = env::var("USER_TIMEZONE").expect("Expected USER_TIMEZONE in the environment");
+        let user_timezone = user_timezone_str.parse::<chrono_tz::Tz>().expect("Invalid timezone");
+        
+        let user_sobriety_date_str = env::var("USER_SOBRIETY_DATE").expect("Expected USER_SOBRIETY_DATE in the environment");
+        let user_sobriety_date = DateTime::parse_from_rfc3339(&user_sobriety_date_str)
+            .expect("Invalid sobriety date")
+            .with_timezone(&user_timezone);
+
+        
         let intents = GatewayIntents::DIRECT_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
         let discord_client = Client::builder(token, intents)
             .event_handler(Handler)
@@ -81,20 +93,16 @@ impl SupportNET {
             timeout_counter: 0,
         });
 
-        let user_timezone = chrono_tz::US::Central;
-        let begin_quiet_hours = 21;
-        let end_quiet_hours = 7;
-
         Ok(Self {
             discord_client,
             conversation_state,
+            user_is_sober,
+            user_name,
             user_timezone,
-            begin_quiet_hours,
-            end_quiet_hours,
+            user_sobriety_date,
         })
     }
 }
-
 
 
 struct ConversationState {
@@ -109,7 +117,6 @@ struct AIMessage {
     role: String,
     content: String,
 }
-
 
 
 #[tokio::main]
