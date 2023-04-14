@@ -3,11 +3,13 @@ use std::env;
 use chrono::{DateTime, Utc, Duration};
 use dotenvy::dotenv;
 use serenity::client::Client;
+use serenity::model::prelude::Channel;
 use std::collections::HashMap;
 use serenity::{
     async_trait,
     model::{channel::Message, gateway::Ready},
     prelude::*,
+    utils::MessageBuilder,
 };
 
 
@@ -18,18 +20,42 @@ const SECONDS_IN_WEEK: i32 = 604800;
 const CHECK_IN_TIMEOUT: i32 = 150 * SECONDS_IN_MINUTE;
 
 
+
 struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, msg: Message) {
-        println!("{}: {}", msg.author.tag(), msg.content);
+    async fn message(&self, context: Context, msg: Message) {
+        println!("Message received: {} from {}", msg.content, msg.author.name);
+
+        // Ignore bot's own messages
+        if msg.author.bot {
+            return;
+        }
+
+        // Check if the message is a direct message
+        if let Ok(channel) = msg.channel(&context).await {
+            if let Channel::Private(_) = channel {
+                // Handle the direct message here
+                // You can use the user ID with msg.author.id
+                let response = MessageBuilder::new()
+                    .push("Hello, ")
+                    .push_bold_safe(&msg.author.name)
+                    .push("! You sent me a direct message.")
+                    .build();
+
+                if let Err(why) = msg.channel_id.say(&context.http, &response).await {
+                    println!("Error sending message: {:?}", why);
+                }
+            }
+        }
     }
 
     async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.tag());
+        println!("{} is connected!", ready.user.name);
     }
 }
+
 
 
 struct SupportNET {
@@ -43,7 +69,7 @@ struct SupportNET {
 
 impl SupportNET {
     pub async fn new(token: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let intents = GatewayIntents::default();
+        let intents = GatewayIntents::DIRECT_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
         let discord_client = Client::builder(token, intents)
             .event_handler(Handler)
             .await?;
