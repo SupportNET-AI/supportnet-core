@@ -1,6 +1,11 @@
+#[cfg(test)]
+mod tests;
+
+
 use std::sync::{Arc, Mutex};
 use std::env;
 use chrono::{DateTime, Utc, Duration};
+use chrono_tz::Tz;
 use dotenvy::dotenv;
 use serenity::client::Client;
 use serenity::model::prelude::Channel;
@@ -56,7 +61,7 @@ impl EventHandler for Handler {
 
 
 struct SupportNET {
-    discord_client: Client,
+    pub discord_client: Option<Client>,
     conversation_state: Mutex<ConversationState>,
     user_is_sober: bool,
     user_name: String,
@@ -94,7 +99,7 @@ impl SupportNET {
         });
 
         Ok(Self {
-            discord_client,
+            discord_client: Some(discord_client),
             conversation_state,
             user_is_sober,
             user_name,
@@ -125,10 +130,52 @@ impl SupportNET {
         println!("Conversation ended.");
     }
 
+
     async fn request_new_check_in_timeout(&self) -> i64 {
         // TODO: Replace this with the actual logic for calculating the new check-in timer
         CHECK_IN_TIMEOUT
     }
+
+
+    /// Returns a formatted string representing the duration of the user's sobriety.
+    ///
+    /// The duration is calculated based on the user's sobriety date and the current time,
+    /// or the provided reference time, if given. The output format is: "{days} day(s) and {hours} hour(s)".
+    ///
+    /// # Arguments
+    ///
+    /// * `reference_time` - An optional reference time to calculate the sobriety duration.
+    ///                      If not provided, the current time is used.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let support_net = SupportNET::new();
+    /// let sobriety_duration = support_net.get_sobriety_duration(None);
+    /// println!("Sobriety duration: {}", sobriety_duration);
+    /// ```
+    fn get_sobriety_duration(&self, reference_time: Option<DateTime<Tz>>) -> String {
+        // Use the provided reference time or the current time in the user's timezone.
+        let localized_time = match reference_time {
+            Some(time) => time,
+            None => Utc::now().with_timezone(&self.user_timezone),
+        };
+
+        // Calculate the duration between the user's sobriety date and the reference or current time.
+        let duration = localized_time.signed_duration_since(self.user_sobriety_date.clone().with_timezone(&self.user_timezone));
+        
+        // Determine the number of days and hours in the duration.
+        let days = duration.num_days();
+        let hours = (duration.num_seconds() % SECONDS_IN_DAY) / SECONDS_IN_HOUR;  // Convert remaining seconds to hours
+
+        // Format the output string with appropriate pluralization.
+        format!("{} day{} and {} hour{}",
+                days,
+                if days != 1 { "s" } else { "" },
+                hours,
+                if hours != 1 { "s" } else { "" })
+    }
+
 }
 
 
@@ -153,7 +200,8 @@ async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("DISCORD_TOKEN not found in environment");
 
     let mut support_net = SupportNET::new(&token).await.expect("Error creating SupportNET");
-    if let Err(why) = support_net.discord_client.start().await {
+
+    if let Err(why) = support_net.discord_client.as_mut().unwrap().start().await {
         println!("An error occurred while running the client: {:?}", why);
     }
 }
