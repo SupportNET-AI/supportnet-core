@@ -1,5 +1,6 @@
 use chrono::DateTime;
 use chrono::TimeZone;
+use chrono::naive::NaiveTime;
 use chrono_tz::America;
 use std::sync::Mutex;
 use tokio_test::block_on;
@@ -28,6 +29,31 @@ async fn setup_test_support_net(user_sobriety_date: Option<DateTime<chrono_tz::T
         .expect("Failed to initialize SupportNET for test");
 
     support_net
+}
+
+
+#[tokio::test]
+async fn test_get_user_current_time() {
+    let support_net = setup_test_support_net(None).await;
+
+    let current_time_str = support_net.get_user_current_time();
+    let current_time = NaiveTime::parse_from_str(&current_time_str, "%H:%M:%S").unwrap();
+
+    let actual_local_time = chrono::Utc::now().with_timezone(&support_net.user_timezone);
+
+    // Check if the returned time string is in the correct format
+    assert_eq!(current_time.format("%H:%M:%S").to_string(), current_time_str);
+
+    // Check if the returned time is within an acceptable range (e.g., +/- 1 minute) from the actual local time
+    let acceptable_duration = chrono::Duration::minutes(1);
+    let time_difference = actual_local_time.time().signed_duration_since(current_time);
+    let time_difference_abs = if time_difference < chrono::Duration::zero() {
+        -time_difference
+    } else {
+        time_difference
+    };
+
+    assert!(time_difference_abs < acceptable_duration, "Returned time is not within the acceptable range");
 }
 
 

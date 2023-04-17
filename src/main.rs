@@ -4,6 +4,7 @@ mod tests;
 
 use std::sync::{Arc, Mutex};
 use std::env;
+use chrono::prelude::*;
 use chrono::{DateTime, Utc, Duration};
 use chrono_tz::Tz;
 use dotenvy::dotenv;
@@ -193,6 +194,11 @@ impl SupportNET {
                 if hours != 1 { "s" } else { "" })
     }
 
+
+    pub fn get_user_current_time(&self) -> String {
+        let localized_time = Utc::now().with_timezone(&self.user_timezone);
+        localized_time.format("%H:%M:%S").to_string()
+    }
 }
 
 
