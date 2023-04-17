@@ -7,7 +7,14 @@ use std::sync::Mutex;
 
 use crate::SupportNetConfig;
 use crate::SupportNET;
-use crate::{ConversationState, CHECK_IN_TIMEOUT, AIMessage};
+use crate::{
+    ConversationState,
+    CHECK_IN_TIMEOUT, 
+    AIMessage, 
+    EARLY_SOBRIETY_GUIDELINES, 
+    MID_TERM_SOBRIETY_GUIDELINES, 
+    LONG_TERM_SOBRIETY_GUIDELINES
+};
 
 
 async fn setup_test_support_net(user_sobriety_date: Option<DateTime<chrono_tz::Tz>>) -> SupportNET {
@@ -29,6 +36,68 @@ async fn setup_test_support_net(user_sobriety_date: Option<DateTime<chrono_tz::T
 
     support_net
 }
+
+
+#[tokio::test]
+async fn test_get_sobriety_duration_days() {
+    // Test case with sobriety duration of 10 days
+    let sobriety_date = chrono_tz::America::Chicago
+        .ymd(2023, 4, 7)
+        .and_hms(0, 0, 0);
+    let support_net = setup_test_support_net(Some(sobriety_date)).await;
+    let reference_time = chrono_tz::America::Chicago
+        .ymd(2023, 4, 17)
+        .and_hms(0, 0, 0);
+    assert_eq!(
+        support_net.get_sobriety_duration_days(Some(reference_time)),
+        10
+    );
+
+    // Test case with sobriety duration of 20 days
+    let sobriety_date = chrono_tz::America::Chicago
+        .ymd(2023, 3, 28)
+        .and_hms(0, 0, 0);
+    let support_net = setup_test_support_net(Some(sobriety_date)).await;
+    let reference_time = chrono_tz::America::Chicago
+        .ymd(2023, 4, 17)
+        .and_hms(0, 0, 0);
+    assert_eq!(
+        support_net.get_sobriety_duration_days(Some(reference_time)),
+        20
+    );
+
+    // Test case with sobriety duration of 30 days
+    let sobriety_date = chrono_tz::America::Chicago
+        .ymd(2023, 3, 18)
+        .and_hms(0, 0, 0);
+    let support_net = setup_test_support_net(Some(sobriety_date)).await;
+    let reference_time = chrono_tz::America::Chicago
+        .ymd(2023, 4, 17)
+        .and_hms(0, 0, 0);
+    assert_eq!(
+        support_net.get_sobriety_duration_days(Some(reference_time)),
+        30
+    );
+}
+
+
+#[tokio::test]
+async fn test_get_check_in_time_prompt() {
+    let support_net = setup_test_support_net(None).await;
+
+    let sobriety_duration_early = 30; // Early sobriety (< 90 days)
+    let prompt_early = support_net.get_check_in_time_prompt(sobriety_duration_early);
+    assert!(prompt_early.contains(EARLY_SOBRIETY_GUIDELINES));
+
+    let sobriety_duration_mid_term = 180; // Mid-term sobriety (3 months to 1 year)
+    let prompt_mid_term = support_net.get_check_in_time_prompt(sobriety_duration_mid_term);
+    assert!(prompt_mid_term.contains(MID_TERM_SOBRIETY_GUIDELINES));
+
+    let sobriety_duration_long_term = 400; // Long-term sobriety (> 1 year)
+    let prompt_long_term = support_net.get_check_in_time_prompt(sobriety_duration_long_term);
+    assert!(prompt_long_term.contains(LONG_TERM_SOBRIETY_GUIDELINES));
+}
+
 
 
 #[tokio::test]

@@ -25,6 +25,21 @@ const SECONDS_IN_DAY: i64 = 86400;
 const SECONDS_IN_WEEK: i64 = 604800;
 const CHECK_IN_TIMEOUT: i64 = 150 * SECONDS_IN_MINUTE;
 
+const EARLY_SOBRIETY_GUIDELINES: &str = "Consider the following guidelines for early sobriety (less than 3 months): \
+    \n\n- Mood: Good -> Check-in timer: 1-2 times per day (e.g., 12h or 8h) \
+    \n- Mood: Moderate -> Check-in timer: 2-3 times per day (e.g., 6h or 4h) \
+    \n- Mood: Low -> Check-in timer: 3-4 times per day (e.g., 4h, 3h, or 2h) ";
+
+const MID_TERM_SOBRIETY_GUIDELINES: &str = "Consider the following guidelines for mid-term sobriety (3 months to 1 year): \
+    \n\n- Mood: Good -> Check-in timer: Every 1-2 days (e.g., 1d, 1d 12h) \
+    \n- Mood: Moderate -> Check-in timer: Every day (e.g., 24h) \
+    \n- Mood: Low -> Check-in timer: Twice per day (e.g., 12h) ";
+
+const LONG_TERM_SOBRIETY_GUIDELINES: &str = "Consider the following guidelines for long-term sobriety (1 year and beyond): \
+    \n\n- Mood: Good -> Check-in timer: Every 3-7 days (e.g., 3d, 5d, 1w) \
+    \n- Mood: Moderate -> Check-in timer: Every 1-3 days (e.g., 1d, 2d, 3d) \
+    \n- Mood: Low -> Check-in timer: Every day (e.g., 24h) ";
+
 struct Handler;
 
 #[async_trait]
@@ -70,6 +85,7 @@ pub struct SupportNetConfig {
 
 
 pub fn config_from_env() -> SupportNetConfig {
+    let user_id = env::var("DISCORD_USER_ID").expect("Expected DISCORD_USER_ID in the environment");
     let user_name = env::var("USER_NAME").expect("Expected USER_NAME in the environment");
 
     let user_is_sober_str = env::var("USER_IS_SOBER").expect("Expected USER_IS_SOBER in the environment");
@@ -220,6 +236,54 @@ impl SupportNET {
         } else {
             !((start_hour <= current_hour) || (current_hour < end_hour))
         }
+    }
+
+
+    /// Returns a prompt message for check-in time based on the user's sobriety duration.
+    ///
+    /// # Arguments
+    ///
+    /// * `sobriety_duration_days` - The number of days the user has been sober.
+    fn get_check_in_time_prompt(&self, sobriety_duration_days: i32) -> String {
+        let mut prompt = format!("Based on the user's sobriety duration ({} days) and mood, determine an appropriate check-in timer for {} in addiction recovery. ",
+                                 sobriety_duration_days, self.user_name);
+
+        if sobriety_duration_days < 90 {
+            prompt.push_str(EARLY_SOBRIETY_GUIDELINES);
+        } else if sobriety_duration_days < 365 {
+            prompt.push_str(MID_TERM_SOBRIETY_GUIDELINES);
+        } else {
+            prompt.push_str(LONG_TERM_SOBRIETY_GUIDELINES);
+        }
+
+        prompt.push_str("\n\nPlease provide your recommendation for a check-in timer ONLY in the format 'Xw Xd Xh Xm' where X is a number and w, d, h, and m stand for weeks, days, hours, and minutes, respectively. \
+            You may leave out any time unit that is not needed. Do not include any additional text in your response.");
+
+        prompt
+    }
+
+
+    /// Calculates and returns the user's sobriety duration in days.
+    ///
+    /// # Arguments
+    ///
+    /// * `reference_time` - (Optional) The reference time to calculate the sobriety duration from. If not provided, it defaults to the current time.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let sobriety_duration_days = support_net.get_sobriety_duration_days(None);
+    /// assert_eq!(sobriety_duration_days, 15);
+    /// ```
+    ///
+    /// ```
+    /// let reference_time = chrono_tz::America::Chicago.ymd(2023, 4, 17).and_hms(0, 0, 0);
+    /// let sobriety_duration_days = support_net.get_sobriety_duration_days(Some(reference_time));
+    /// assert_eq!(sobriety_duration_days, 20);
+    /// ```
+    fn get_sobriety_duration_days(&self, reference_time: Option<DateTime<Tz>>) -> i32 {
+        let sobriety_duration = self.get_sobriety_duration(reference_time);
+        sobriety_duration.split_whitespace().next().unwrap().parse::<i32>().unwrap()
     }
 }
 
