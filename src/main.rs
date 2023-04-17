@@ -5,7 +5,7 @@ mod tests;
 use std::sync::{Arc, Mutex};
 use std::env;
 use chrono::prelude::*;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc, Duration, Timelike};
 use chrono_tz::Tz;
 use dotenvy::dotenv;
 use serenity::client::Client;
@@ -41,19 +41,19 @@ impl EventHandler for Handler {
         if let Ok(channel) = msg.channel(&context).await {
             if let Channel::Private(_) = channel {
                 // Handle the direct message here
-                // You can use the user ID with msg.author.id
                 let response = MessageBuilder::new()
                     .push("Hello, ")
                     .push_bold_safe(&msg.author.name)
                     .push("! You sent me a direct message.")
                     .build();
 
-                if let Err(why) = msg.channel_id.say(&context.http, &response).await {
+                    if let Err(why) = msg.channel_id.say(&context.http, &response).await {
                     println!("Error sending message: {:?}", why);
                 }
             }
         }
     }
+
 
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
@@ -198,6 +198,28 @@ impl SupportNET {
     pub fn get_user_current_time(&self) -> String {
         let localized_time = Utc::now().with_timezone(&self.user_timezone);
         localized_time.format("%H:%M:%S").to_string()
+    }
+
+
+    /// Check if the given `user_time` is outside the range specified by `start_hour` and `end_hour`.
+    ///
+    /// # Arguments
+    ///
+    /// * `user_time` - A `chrono::DateTime<chrono_tz::Tz>` object representing the user's local time.
+    /// * `start_hour` - The starting hour of the time range (inclusive), in 24-hour format.
+    /// * `end_hour` - The ending hour of the time range (exclusive), in 24-hour format.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the `user_time` is outside the specified range, `false` otherwise.
+    pub fn is_time_outside_range(&self, user_time: chrono::DateTime<chrono_tz::Tz>, start_hour: u32, end_hour: u32) -> bool {
+        let current_hour = user_time.hour();
+
+        if start_hour <= end_hour {
+            !(start_hour <= current_hour && current_hour < end_hour)
+        } else {
+            !((start_hour <= current_hour) || (current_hour < end_hour))
+        }
     }
 }
 

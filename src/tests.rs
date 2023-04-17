@@ -3,7 +3,6 @@ use chrono::TimeZone;
 use chrono::naive::NaiveTime;
 use chrono_tz::America;
 use std::sync::Mutex;
-use tokio_test::block_on;
 
 
 use crate::SupportNetConfig;
@@ -29,6 +28,24 @@ async fn setup_test_support_net(user_sobriety_date: Option<DateTime<chrono_tz::T
         .expect("Failed to initialize SupportNET for test");
 
     support_net
+}
+
+
+#[tokio::test]
+async fn test_is_time_outside_range() {
+    let support_net = setup_test_support_net(None).await;
+
+    let user_time = support_net.user_timezone.ymd(2023, 4, 17).and_hms(13, 0, 0); // 13:00:00
+    assert_eq!(support_net.is_time_outside_range(user_time, 9, 17), false); // Inside 09:00 - 17:00
+
+    let user_time = support_net.user_timezone.ymd(2023, 4, 17).and_hms(8, 0, 0); // 08:00:00
+    assert_eq!(support_net.is_time_outside_range(user_time, 9, 17), true); // Outside 09:00 - 17:00
+
+    let user_time = support_net.user_timezone.ymd(2023, 4, 17).and_hms(22, 0, 0); // 22:00:00
+    assert_eq!(support_net.is_time_outside_range(user_time, 17, 9), false); // Inside 17:00 - 09:00
+
+    let user_time = support_net.user_timezone.ymd(2023, 4, 17).and_hms(12, 0, 0); // 12:00:00
+    assert_eq!(support_net.is_time_outside_range(user_time, 17, 9), true); // Outside 17:00 - 09:00
 }
 
 
