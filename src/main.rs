@@ -1,25 +1,23 @@
 #[cfg(test)]
 mod tests;
 
-
 use std::env;
-use chrono::{DateTime, Utc, Timelike};
+use std::sync::Arc;
+use chrono::{DateTime, Timelike, Utc};
 use chrono_tz::Tz;
 use dotenvy::dotenv;
-use serenity::client::Client;
-use serenity::model::prelude::Channel;
-use tokio::sync::{Mutex};
-use std::sync::Arc;
 use serenity::{
     async_trait,
+    client::{bridge::gateway::ShardManager, Client},
     model::{
-        channel::Message, 
+        channel::{Channel, Message},
         gateway::Ready,
         id::UserId,
     },
     prelude::*,
 };
 
+use tokio::sync::Mutex;
 
 const SECONDS_IN_MINUTE: i64 = 60;
 #[allow(dead_code)]
@@ -161,7 +159,7 @@ pub struct SupportNET {
 impl SupportNET {
     pub async fn new(config: SupportNetConfig, token: &str) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
         let intents = GatewayIntents::DIRECT_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
-
+    
         let support_net = Arc::new(Self {
             user_id: config.user_id,
             user_name: config.user_name,
@@ -170,16 +168,16 @@ impl SupportNET {
             conversation_state: Mutex::new(ConversationState::default()),
             discord_client: Mutex::new(None),
         });
-
+    
         let handler = Handler::new(Arc::clone(&support_net));
         let discord_client = Client::builder(token, intents)
             .event_handler(handler)
             .await?;
-
+    
         support_net.set_discord_client(discord_client).await;
-
+    
         Ok(support_net)
-    }
+    }    
 
 
     pub async fn set_discord_client(&self, discord_client: Client) {
@@ -187,7 +185,7 @@ impl SupportNET {
         let mut discord_client_mutex = self.discord_client.lock().await;
         *discord_client_mutex = Some(discord_client);
     }
-    
+   
 
     pub async fn reset_timeout_counter(&self) {
         let mut conversation_state = self.conversation_state.lock().await;
@@ -374,28 +372,82 @@ struct ChatMessage {
 }
 
 
-#[tokio::main]
-async fn main() {
-    dotenv().expect(".env file not found");
-
-    let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in the environment");
-    let config = config_from_env();
-    let support_net = SupportNET::new(config, &token).await.expect("Failed to initialize SupportNET");
-
-    if let Some(client) = support_net
+/// Starts the Discord client with the provided `SupportNET` instance.
+///
+/// The `run_discord_client` function takes an `Arc<SupportNET>` as an argument,
+/// which is used to manage the shared state between the Discord client and
+/// other parts of the application. The function attempts to start the Discord
+/// client and returns a `Result` indicating whether the operation was
+/// successful or not.
+///
+/// ### Arguments
+///
+/// * `support_net` - An `Arc<SupportNET>` instance to manage shared state.
+///
+/// ### Errors
+///
+/// If the Discord client fails to start or is not initialized, the function
+/// returns an error.
+///
+/// ### Examples
+///
+/// ```rust
+/// use std::sync::Arc;
+/// use supportnet_core::SupportNET;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let support_net = SupportNET::new(...).await.unwrap();
+///     let support_net_arc = Arc::new(support_net);
+///
+///     match run_discord_client(support_net_arc).await {
+///         Ok(_) => println!("Discord client stopped."),
+///         Err(e) => println!("An error occurred while running the client: {:?}", e),
+///     }
+/// }
+/// ```
+async fn run_discord_client(support_net: Arc<SupportNET>) -> Result<(), Box<dyn std::error::Error>> {
+    let client = support_net
         .discord_client
         .lock()
-        .await
-        .as_ref() {
-            if let Err(why) = client
-                .clone()
-                .lock()
-                .await
-                .start()
-                .await {
-                println!("An error occurred while running the client: {:?}", why);
-            }
-        } else {
-            println!("Discord client not initialized.");
-        };
+        .await;
+
+    if let Some(client) = client.as_ref() {
+        let client = client.clone();
+        let mut locked_client = client.lock().await;
+        locked_client.start().await.map_err(From::from)
+    } else {
+        Err("Discord client not initialized.".into())
+    }
+}
+
+
+/// The main entry point of the application.
+///
+/// This function initializes the environment and the `SupportNET` instance
+/// with the necessary configurations. Then, it starts the Discord client by
+/// invoking the `run_discord_client` function and handles the result of the
+/// operation.
+#[tokio::main]
+async fn main() {
+    // Load environment variables from the .env file
+    dotenv().expect(".env file not found");
+
+    // Get the Discord token from the environment
+    let token = env::var("DISCORD_TOKEN").expect("Expected DISCORD_TOKEN in the environment");
+
+    // Load the configuration for SupportNET
+    let config = config_from_env();
+
+    // Initialize the SupportNET instance
+    let support_net = SupportNET::new(config, &token).await.expect("Failed to initialize SupportNET");
+
+    // Create an Arc reference for the SupportNET instance
+    let support_net_arc = Arc::new(support_net);
+
+    // Start the Discord client and handle the result
+    match run_discord_client(Arc::clone(&support_net_arc)).await {
+        Ok(_) => println!("Discord client stopped."),
+        Err(e) => println!("An error occurred while running the client: {:?}", e),
+    }
 }
