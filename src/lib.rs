@@ -1,3 +1,4 @@
+mod communication_channel;
 mod conversation_manager;
 mod discord_manager;
 mod support;
